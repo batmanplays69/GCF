@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Perfect Fit: 100x Multiplier</title>
+    <style>
+        body {
+            margin: 0;
+            background: #050505;
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            background: #000;
+            border: 2px solid #333;
+            box-shadow: 0 0 60px rgba(255, 255, 255, 0.05);
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            pointer-events: none;
+        }
+        .stats {
+            font-size: 4.5rem;
+            font-weight: 900;
+            margin: 0;
+            letter-spacing: -2px;
+        }
+        .label {
+            font-size: 0.7rem;
+            letter-spacing: 5px;
+            color: #888;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="label">Population Density</div>
+        <h1 class="stats" id="count">1</h1>
+        <div class="label" style="color: #fff;">Ball Size == Gap Size</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const countDisplay = document.getElementById('count');
+
+        canvas.width = 800;
+        canvas.height = 800;
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const ringRadius = 340;
+        
+        // --- GEOMETRIC SYNC ---
+        // We set the gap and ball size so the ball is a "Perfect Fit"
+        const gapSize = 0.12; 
+        const ballRadius = 18; // Larger balls to match the gap width visually
+        
+        const gravity = 0.35;       
+        const friction = 0.999;    
+        const wallBounciness = 1.15; 
+        const maxSpeed = 15;       
+        
+        let balls = [];
+        let ringRotation = 0;
+
+        class Ball {
+            constructor(x, y, vx, vy, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = color;
+                this.isEscaping = false;
+            }
+
+            draw() {
+                // Solid balls with a slight highlight for depth
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, ballRadius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // Shine effect
+                ctx.beginPath();
+                ctx.arc(this.x - ballRadius/3, this.y - ballRadius/3, ballRadius/4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                this.vy += gravity;
+                this.vx *= friction;
+                this.vy *= friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Collision with boundary
+                if (distance + ballRadius >= ringRadius && !this.isEscaping) {
+                    let angle = Math.atan2(dy, dx);
+                    if (angle < 0) angle += Math.PI * 2;
+
+                    let gapStart = ringRotation % (Math.PI * 2);
+                    let gapEnd = (ringRotation + gapSize) % (Math.PI * 2);
+
+                    let inGap = false;
+                    if (gapStart < gapEnd) {
+                        if (angle > gapStart && angle < gapEnd) inGap = true;
+                    } else {
+                        if (angle > gapStart || angle < gapEnd) inGap = true;
+                    }
+
+                    if (inGap) {
+                        this.isEscaping = true;
+                        handleEscape();
+                    } else {
+                        // Solid Bounce
+                        const normalX = dx / distance;
+                        const normalY = dy / distance;
+                        const dot = this.vx * normalX + this.vy * normalY;
+                        
+                        this.vx = (this.vx - 2 * dot * normalX) * wallBounciness;
+                        this.vy = (this.vy - 2 * dot * normalY) * wallBounciness;
+
+                        // Clamp Speed
+                        let speed = Math.sqrt(this.vx**2 + this.vy**2);
+                        if (speed > maxSpeed) {
+                            this.vx = (this.vx / speed) * maxSpeed;
+                            this.vy = (this.vy / speed) * maxSpeed;
+                        }
+
+                        // Reset position to edge
+                        this.x = centerX + (ringRadius - ballRadius - 1) * Math.cos(angle);
+                        this.y = centerY + (ringRadius - ballRadius - 1) * Math.sin(angle);
+                    }
+                }
+            }
+        }
+
+        function handleEscape() {
+            // Capping at 1500 for performance with larger ball sizes
+            if (balls.length < 1500) { 
+                for(let i = 0; i < 100; i++) {
+                    setTimeout(() => spawnBall(), i * 10); 
+                }
+            }
+        }
+
+        function spawnBall() {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 2 + Math.random() * 5;
+            balls.push(new Ball(
+                centerX, centerY, 
+                Math.cos(angle) * speed, 
+                Math.sin(angle) * speed, 
+                `hsl(${Math.random() * 360}, 80%, 60%)` // Different colors for every ball
+            ));
+        }
+
+        function drawRing() {
+            // Solid White Boundary
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 15;
+            ctx.lineCap = 'round';
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, ringRadius, ringRotation + gapSize, ringRotation + (Math.PI * 2));
+            ctx.stroke();
+        }
+
+        function animate() {
+            // Sharp movement with minimal trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ringRotation += 0.02; 
+            drawRing();
+
+            balls = balls.filter(ball => {
+                const dist = Math.sqrt((ball.x - centerX)**2 + (ball.y - centerY)**2);
+                return dist < 1200; 
+            });
+
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw();
+            });
+
+            countDisplay.innerText = balls.filter(b => !b.isEscaping).length;
+            requestAnimationFrame(animate);
+        }
+
+        spawnBall();
+        animate();
+    </script>
+</body>
+</html>
